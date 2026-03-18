@@ -1,17 +1,15 @@
 #include "mg58f18/c_mg58f18.h"
 
-#include "rdno_core/c_gpio.h"
-#include "rdno_wifi/c_node.h"
-#include "rdno_core/c_timer.h"
-#include "rdno_core/c_serial.h"
-#include "rdno_core/c_packet.h"
-#include "rdno_core/c_str.h"
-#include "rdno_core/c_system.h"
-#include "rdno_core/c_task.h"
+#include "rcore/c_gpio.h"
+#include "rwifi/c_node.h"
+#include "rcore/c_timer.h"
+#include "rcore/c_log.h"
+#include "rcore/c_packet.h"
+#include "rcore/c_str.h"
+#include "rcore/c_system.h"
+#include "rcore/c_task.h"
 
-#include "rdno_sensors/c_mg58f18.h"
-
-#include "common/c_common.h"
+#include "rsensors/c_mg58f18.h"
 
 namespace ncore
 {
@@ -36,7 +34,7 @@ namespace ncore
             if (gLastDetected != detected)
             {
                 gLastDetected = detected;
-                nserial::println(detected ? "Presence!" : "No presence.");
+                nlog::println(detected ? "Presence!" : "No presence.");
             }
             else
             {

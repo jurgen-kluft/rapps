@@ -1,18 +1,16 @@
 #include "rd03d/c_rd03d.h"
 
-#include "rdno_core/c_gpio.h"
-#include "rdno_wifi/c_node.h"
-#include "rdno_wifi/c_wifi.h"
-#include "rdno_core/c_timer.h"
-#include "rdno_core/c_serial.h"
-#include "rdno_core/c_packet.h"
-#include "rdno_core/c_str.h"
-#include "rdno_core/c_system.h"
-#include "rdno_core/c_task.h"
+#include "rcore/c_gpio.h"
+#include "rwifi/c_node.h"
+#include "rwifi/c_wifi.h"
+#include "rcore/c_timer.h"
+#include "rcore/c_log.h"
+#include "rcore/c_packet.h"
+#include "rcore/c_str.h"
+#include "rcore/c_system.h"
+#include "rcore/c_task.h"
 
-#include "rdno_sensors/c_rd03d.h"
-
-#include "common/c_common.h"
+#include "rsensors/c_rd03d.h"
 
 #define ENABLE_RD03D
 
@@ -85,24 +83,24 @@ namespace ncore
 
                     if (detected == 0x80)
                     {
-                        nserial::printf("Status: PRESENCE 1 -> 0 (distance: %d,%d)\n", va_t(tgt.x), va_t(tgt.y));
+                        nlog::printf("Status: PRESENCE 1 -> 0 (distance: %d,%d)\n", va_t(tgt.x), va_t(tgt.y));
                     }
                     else if (detected == 0x01)
                     {
-                        nserial::printf("Status: PRESENCE 0 -> 1 (distance: %d,%d)\n", va_t(tgt.x), va_t(tgt.y));
+                        nlog::printf("Status: PRESENCE 0 -> 1 (distance: %d,%d)\n", va_t(tgt.x), va_t(tgt.y));
                     }
                     else if (detected != 0x0)
                     {
-                        nserial::printf("Status: PRESENCE (distance: %d,%d)\n", va_t(tgt.x), va_t(tgt.y));
+                        nlog::printf("Status: PRESENCE (distance: %d,%d)\n", va_t(tgt.x), va_t(tgt.y));
                     }
                     else
                     {
-                        nserial::printf("Status: ABSENCE\n");
+                        nlog::printf("Status: ABSENCE\n");
                     }
                 }
 
                 // Write a custom (binary-format) network message
-                gAppState.gSensorPacket.begin(state->wifi->m_mac);
+                gAppState.gSensorPacket.begin(state->MACAddress);
 
                 for (s8 i = 0; i < 3; ++i)
                 {

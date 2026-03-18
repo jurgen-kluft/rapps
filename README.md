@@ -1,4 +1,4 @@
-# rdno_apps
+# rapps
 
 - Air Quality Monitoring   (Functional)
 - Human Presence Detection (Functional)
@@ -6,10 +6,10 @@
 
 Uses the following `rdno` libraries:
 
-- rdno_core
-- rdno_network
-- rdno_wifi
-- rdno_sensors
+- rcore
+- rnetwork
+- rwifi
+- rsensors
 
 ## Overview
 

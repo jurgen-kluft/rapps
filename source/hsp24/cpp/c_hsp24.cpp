@@ -1,18 +1,16 @@
 #include "hsp24/c_hsp24.h"
 
-#include "rdno_core/c_gpio.h"
-#include "rdno_wifi/c_node.h"
-#include "rdno_wifi/c_wifi.h"
-#include "rdno_core/c_timer.h"
-#include "rdno_core/c_serial.h"
-#include "rdno_core/c_packet.h"
-#include "rdno_core/c_str.h"
-#include "rdno_core/c_system.h"
-#include "rdno_core/c_task.h"
+#include "rcore/c_gpio.h"
+#include "rwifi/c_node.h"
+#include "rwifi/c_wifi.h"
+#include "rcore/c_timer.h"
+#include "rcore/c_log.h"
+#include "rcore/c_packet.h"
+#include "rcore/c_str.h"
+#include "rcore/c_system.h"
+#include "rcore/c_task.h"
 
-#include "rdno_sensors/c_hsp24.h"
-
-#include "common/c_common.h"
+#include "rsensors/c_hsp24.h"
 
 #define ENABLE_HSP24
 
@@ -85,19 +83,19 @@ namespace ncore
 
                 if (detected == 0x80)
                 {
-                    nserial::printf("Status: PRESENCE 1 -> 0 (distance: %d)\n", va_t(status.detectionDistance));
+                    nlog::printf("Status: PRESENCE 1 -> 0 (distance: %d)\n", va_t(status.detectionDistance));
                 }
                 else if (detected == 0x01)
                 {
-                    nserial::printf("Status: PRESENCE 0 -> 1 (distance: %d)\n", va_t(status.detectionDistance));
+                    nlog::printf("Status: PRESENCE 0 -> 1 (distance: %d)\n", va_t(status.detectionDistance));
                 }
                 else if (detected != 0x0)
                 {
-                    nserial::printf("Status: PRESENCE (distance: %d)\n", va_t(status.detectionDistance));
+                    nlog::printf("Status: PRESENCE (distance: %d)\n", va_t(status.detectionDistance));
                 }
                 else
                 {
-                    nserial::printf("Status: ABSENCE\n");
+                    nlog::printf("Status: ABSENCE\n");
                 }
             }
 #endif
@@ -120,7 +118,7 @@ namespace ncore
                 gAppState.gCurrentHsp24.LastSendDetected = detected;
 
                 // Write a custom (binary-format) network message
-                gAppState.gSensorPacket.begin(state->wifi->m_mac);
+                gAppState.gSensorPacket.begin(state->MACAddress);
                 gAppState.gSensorPacket.write(npacket::nsensorid::ID_PRESENCE1, detected & 3);
                 gAppState.gSensorPacket.write(npacket::nsensorid::ID_RSSI, nwifi::get_RSSI(state));
                 gAppState.gSensorPacket.finalize();

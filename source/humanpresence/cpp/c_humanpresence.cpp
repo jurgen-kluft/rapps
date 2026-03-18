@@ -1,18 +1,16 @@
 #include "humanpresence/c_humanpresence.h"
 
-#include "rdno_core/c_app.h"
-#include "rdno_wifi/c_wifi.h"
-#include "rdno_wifi/c_node.h"
-#include "rdno_core/c_timer.h"
-#include "rdno_core/c_serial.h"
-#include "rdno_core/c_packet.h"
-#include "rdno_core/c_str.h"
-#include "rdno_core/c_system.h"
-#include "rdno_core/c_task.h"
+#include "rcore/c_app.h"
+#include "rwifi/c_wifi.h"
+#include "rwifi/c_node.h"
+#include "rcore/c_timer.h"
+#include "rcore/c_log.h"
+#include "rcore/c_packet.h"
+#include "rcore/c_str.h"
+#include "rcore/c_system.h"
+#include "rcore/c_task.h"
 
-#include "common/c_common.h"
-
-#include "rdno_sensors/c_hmmd.h"
+#include "rsensors/c_hmmd.h"
 
 namespace ncore
 {
@@ -44,14 +42,14 @@ namespace ncore
             if (nsensors::readHMMD2(&presence, &distanceInCm))
             {
 #if 0
-            nserial::print("Read Presence: ");
-            nserial::println(presence == 1 ? "On" : "Off");
-            nserial::print("Read Distance: ");
+            nlog::print("Read Presence: ");
+            nlog::println(presence == 1 ? "On" : "Off");
+            nlog::print("Read Distance: ");
             char  distanceStrBuffer[16];
             str_t distanceStr = str_mutable(distanceStrBuffer, 16);
             to_str(distanceStr, (s32)distanceInCm, 10);
-            nserial::print(distanceStr.m_const);
-            nserial::println(" cm");
+            nlog::print(distanceStr.m_const);
+            nlog::println(" cm");
 #endif
                 if ((gAppState.gLastPresenceStream & 0x8000000000000000) == 0)
                 {
@@ -63,7 +61,7 @@ namespace ncore
                 }
 
                 // Write a custom (binary-format) network message
-                gAppState.gSensorPacket.begin(state->wifi->m_mac);
+                gAppState.gSensorPacket.begin(state->MACAddress);
                 if (presence != 0)
                 {
                     gAppState.gLastPresenceStream = (gAppState.gLastPresenceStream << 1) | 1;
@@ -92,14 +90,14 @@ namespace ncore
                     if (gAppState.gSensorPacket.count() > 0)
                     {
 #ifdef TARGET_DEBUG
-                        nserial::print("Sending presence=");
-                        nserial::print(presence == 1 ? "On" : "Off");
-                        nserial::print(", distance=");
+                        nlog::print("Sending presence=");
+                        nlog::print(presence == 1 ? "On" : "Off");
+                        nlog::print(", distance=");
                         char  distanceStrBuffer[16];
                         str_t distanceStr = str_mutable(distanceStrBuffer, 16);
                         to_str(distanceStr, (s32)distanceInCm, 10);
-                        nserial::print(distanceStr.m_const);
-                        nserial::println(" cm");
+                        nlog::print(distanceStr.m_const);
+                        nlog::println(" cm");
 #endif
                         gAppState.gSensorPacket.finalize();
                         nnode::send_sensor_data(state, gAppState.gSensorPacket.Data, gAppState.gSensorPacket.Size);
@@ -142,7 +140,7 @@ namespace ncore
             ntask::set_main(state, &gAppTask, &gMainProgram);
             nnode::initialize(state, &gAppTask);
 
-            nserial::println("Setup done...");
+            nlog::println("Setup done...");
         }
 
         void tick(state_t* state) { ntask::tick(state, &gAppTask); }

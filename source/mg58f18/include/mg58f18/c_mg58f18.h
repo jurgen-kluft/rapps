@@ -1,6 +1,6 @@
 #ifndef __APP_MAGORTEK_RADAR_SENSOR_H__
 #define __APP_MAGORTEK_RADAR_SENSOR_H__
-#include "rdno_core/c_target.h"
+#include "rcore/c_target.h"
 #ifdef USE_PRAGMA_ONCE
     #pragma once
 #endif

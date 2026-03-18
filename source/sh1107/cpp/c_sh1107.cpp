@@ -1,21 +1,19 @@
 #include "sh1107/c_sh1107.h"
 
-#include "rdno_core/c_malloc.h"
-#include "rdno_core/c_gpio.h"
-#include "rdno_core/c_timer.h"
-#include "rdno_core/c_serial.h"
-#include "rdno_core/c_packet.h"
-#include "rdno_core/c_str.h"
-#include "rdno_core/c_system.h"
-#include "rdno_core/c_wire.h"
+#include "rcore/c_malloc.h"
+#include "rcore/c_gpio.h"
+#include "rcore/c_timer.h"
+#include "rcore/c_log.h"
+#include "rcore/c_packet.h"
+#include "rcore/c_str.h"
+#include "rcore/c_system.h"
+#include "rcore/c_wire.h"
 
-#include "rdno_wifi/c_tcp.h"
-#include "rdno_wifi/c_node.h"
+#include "rwifi/c_tcp.h"
+#include "rwifi/c_node.h"
 
-#include "common/c_common.h"
-
-#include "rdno_u8g2/U8x8lib.h"
-#include "rdno_u8g2/U8g2lib.h"
+#include "ru8g2/U8x8lib.h"
+#include "ru8g2/U8g2lib.h"
 
 namespace ncore
 {
@@ -126,7 +124,7 @@ namespace ncore
             humidity_text[0] = (humidity_value / 10) + '0';
             humidity_text[1] = (humidity_value % 10) + '0';
             humidity_text[2] = '\0';
-            nserial::println(humidity_text);
+            nlog::println(humidity_text);
 
             gDisplay.setFontMode(1);
             gDisplay.setBitmapMode(1);
