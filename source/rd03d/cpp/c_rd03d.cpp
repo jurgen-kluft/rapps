@@ -35,7 +35,7 @@ namespace ncore
 
     struct state_app_t
     {
-        npacket::sensorpacket_t gSensorPacket;  // Sensor packet for sending data
+        npacket::packet_t gSensorPacket;  // Sensor packet for sending data
         rd03d_data_t            gCurrentRd03d;
     };
 
@@ -100,7 +100,9 @@ namespace ncore
                 }
 
                 // Write a custom (binary-format) network message
-                gAppState.gSensorPacket.begin(state->MACAddress);
+
+                npacket::sensor_block_t sensors;
+                sensors.begin(&gAppState.gSensorPacket);
 
                 for (s8 i = 0; i < 3; ++i)
                 {
@@ -115,15 +117,17 @@ namespace ncore
                     if (gAppState.gCurrentRd03d.LastSendDetected[i] != detected)
                     {
                         gAppState.gCurrentRd03d.LastSendDetected[i] = detected;
-                        gAppState.gSensorPacket.write(npacket::nsensorid::ID_PRESENCE1 + i, detected);
+                        npacket::sensor_value_t distanceSensor = {npacket::nsensorid::ID_DISTANCE1 + i, (u16)detected};
+                        sensors.write(&gAppState.gSensorPacket, distanceSensor);
                     }
                 }
 
-                if (gAppState.gSensorPacket.count() > 0)
-                {
-                    gAppState.gSensorPacket.write(npacket::nsensorid::ID_RSSI, nwifi::get_RSSI(state) & 0xFFFF);
-                    gAppState.gSensorPacket.finalize();
+                npacket::sensor_value_t rssiSensor = {npacket::nsensorid::ID_RSSI, (u16)(nwifi::get_RSSI(state) & 0xFFFF)};
+                sensors.write(&gAppState.gSensorPacket, rssiSensor);
 
+                if (sensors.finalize(&gAppState.gSensorPacket) > 0)
+                {
+                    npacket::packet_set_mac(gAppState.gSensorPacket, state->MACAddress);
                     nnode::send_sensor_data(state, gAppState.gSensorPacket.Data, gAppState.gSensorPacket.Size);
                 }
             }

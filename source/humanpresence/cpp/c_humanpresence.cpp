@@ -16,15 +16,15 @@ namespace ncore
 {
     struct state_app_t
     {
-        u64                     gLastSensorReadTimeInMillis = 0;
-        npacket::sensorpacket_t gSensorPacket;                // Sensor packet for sending data
-        u16                     gSequence           = 0;      // Sequence number for the packet
-        const u8                kVersion            = 1;      // Version number for the packet
-        s16                     gLastDistanceInCm   = 32768;  // Last distance value read from the sensor
-        s8                      gLastPresence       = 0;      // Last presence value read from the sensor
-        u64                     gLastPresenceStream = 0;      // Last presence value read from the sensor
-        s8                      gLastPresence0      = 64;
-        s8                      gLastPresence1      = 0;
+        u64               gLastSensorReadTimeInMillis = 0;
+        npacket::packet_t gSensorPacket;                // Sensor packet for sending data
+        u16               gSequence           = 0;      // Sequence number for the packet
+        const u8          kVersion            = 1;      // Version number for the packet
+        s16               gLastDistanceInCm   = 32768;  // Last distance value read from the sensor
+        s8                gLastPresence       = 0;      // Last presence value read from the sensor
+        u64               gLastPresenceStream = 0;      // Last presence value read from the sensor
+        s8                gLastPresence0      = 64;
+        s8                gLastPresence1      = 0;
     };
 
     state_app_t gAppState;
@@ -60,8 +60,6 @@ namespace ncore
                     gAppState.gLastPresence1 -= 1;
                 }
 
-                // Write a custom (binary-format) network message
-                gAppState.gSensorPacket.begin(state->MACAddress);
                 if (presence != 0)
                 {
                     gAppState.gLastPresenceStream = (gAppState.gLastPresenceStream << 1) | 1;
@@ -80,14 +78,20 @@ namespace ncore
                 {
                     gAppState.gLastPresence = presence;
 
-                    gAppState.gSensorPacket.write(npacket::nsensorid::ID_PRESENCE1, (u16)presence);
+                    npacket::sensor_block_t sensors;
+                    sensors.begin(&gAppState.gSensorPacket);
+
+                    npacket::sensor_value_t presenceSensor = {npacket::nsensorid::ID_PRESENCE1, (u16)presence};
+                    sensors.write(&gAppState.gSensorPacket, presenceSensor);
+
                     if (distanceInCm > 0 && distanceInCm < 3200)
                     {
                         gAppState.gLastDistanceInCm = distanceInCm;
-                        gAppState.gSensorPacket.write(npacket::nsensorid::ID_DISTANCE1, distanceInCm);
+                        npacket::sensor_value_t distanceSensor = {npacket::nsensorid::ID_DISTANCE1, distanceInCm};
+                        sensors.write(&gAppState.gSensorPacket, distanceSensor);
                     }
 
-                    if (gAppState.gSensorPacket.count() > 0)
+                    if (sensors.finalize() > 0)
                     {
 #ifdef TARGET_DEBUG
                         nlog::print("Sending presence=");
@@ -99,7 +103,7 @@ namespace ncore
                         nlog::print(distanceStr.m_const);
                         nlog::println(" cm");
 #endif
-                        gAppState.gSensorPacket.finalize();
+                        npacket::packet_set_mac(gAppState.gSensorPacket, state->MACAddress);
                         nnode::send_sensor_data(state, gAppState.gSensorPacket.Data, gAppState.gSensorPacket.Size);
                     }
                 }

@@ -1,5 +1,6 @@
 #include "hsp24/c_hsp24.h"
 
+#include "rcore/c_app.h"
 #include "rcore/c_gpio.h"
 #include "rwifi/c_node.h"
 #include "rwifi/c_wifi.h"

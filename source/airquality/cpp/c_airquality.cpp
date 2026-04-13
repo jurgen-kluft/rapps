@@ -121,18 +121,13 @@ namespace ncore
         {
             gAppState.gLastSendBh.lux = lux;
 
-            // Write a custom (binary-format) network message
-            npacket::packet_set_mac(gAppState.gSensorPacket, state->MACAddress);
-
             nlog::printf("Light: %d lx\n", va_t((u32)lux));
-            npacket::sensor_block_t sensor_block;
-            sensor_block.begin(&gAppState.gSensorPacket);
-            {
-                npacket::sensor_value_t light_sensor(npacket::sensor_block_t::ID_LIGHT, (u16)lux);
-                sensor_block.write(&gAppState.gSensorPacket, light_sensor);
-            }
-            sensor_block.finalize(&gAppState.gSensorPacket);
 
+            // Write a custom (binary-format) network message
+            npacket::packet_init(gAppState.gSensorPacket);
+            npacket::packet_write(gAppState.gSensorPacket, npacket::ID_LIGHT, state->MACAddress, (u16)lux);
+
+            // Send the sensor data to the server
             nnode::send_sensor_data(state, gAppState.gSensorPacket.Data, gAppState.gSensorPacket.Size);
         }
 #endif
@@ -161,10 +156,8 @@ namespace ncore
     {
 #ifdef ENABLE_BME280
         // Write a custom (binary-format) network message
-        npacket::packet_set_mac(gAppState.gSensorPacket, state->MACAddress);
 
-        npacket::sensor_block_t sensor_block;
-        sensor_block.begin(&gAppState.gSensorPacket);
+        npacket::packet_init(gAppState.gSensorPacket);
 
         const s8  temperature = gAppState.gCurrentBme.temperature;
         const u16 pressure    = gAppState.gCurrentBme.pressure;
@@ -173,25 +166,22 @@ namespace ncore
         {
             gAppState.gLastSendBme.temperature = temperature;
             nlog::printf("Temperature: %d °C\n", va_t((s32)temperature));
-            npacket::sensor_value_t temp_sensor(npacket::sensor_block_t::ID_TEMPERATURE, (u16)temperature);
-            sensor_block.write(&gAppState.gSensorPacket, temp_sensor);
+            npacket::packet_write(gAppState.gSensorPacket, npacket::ID_TEMPERATURE, state->MACAddress, (u16)temperature);
         }
         if (gAppState.gLastSendBme.pressure != pressure)
         {
             gAppState.gLastSendBme.pressure = pressure;
             nlog::printf("Pressure: %d hPa\n", va_t((u32)pressure));
-            npacket::sensor_value_t pressure_sensor(npacket::sensor_block_t::ID_PRESSURE, (u16)pressure);
-            sensor_block.write(&gAppState.gSensorPacket, pressure_sensor);
+            npacket::packet_write(gAppState.gSensorPacket, npacket::ID_PRESSURE, state->MACAddress, (u16)pressure);
         }
         if (gAppState.gLastSendBme.humidity != humidity)
         {
             gAppState.gLastSendBme.humidity = humidity;
             nlog::printf("Humidity: %d %%\n", va_t((u32)humidity));
-            npacket::sensor_value_t humidity_sensor(npacket::sensor_block_t::ID_HUMIDITY, (u16)humidity);
-            sensor_block.write(&gAppState.gSensorPacket, humidity_sensor);
+            npacket::packet_write(gAppState.gSensorPacket, npacket::ID_HUMIDITY, state->MACAddress, (u16)humidity);
         }
 
-        if (sensor_block.finalize(&gAppState.gSensorPacket) > 0)
+        if (gAppState.gSensorPacket.Size > 0)
         {
             nnode::send_sensor_data(state, gAppState.gSensorPacket.Data, gAppState.gSensorPacket.Size);
         }
@@ -223,10 +213,8 @@ namespace ncore
     {
 #ifdef ENABLE_SCD41
         // Write a custom (binary-format) network message
-        npacket::packet_set_mac(gAppState.gSensorPacket, state->MACAddress);
 
-        npacket::sensor_block_t sensor_block;
-        sensor_block.begin(&gAppState.gSensorPacket);
+        npacket::packet_init(gAppState.gSensorPacket);
 
         const u16 co2         = gAppState.gCurrentScd.co2;
         const s8  temperature = gAppState.gCurrentScd.temperature;
@@ -236,25 +224,22 @@ namespace ncore
         {
             gAppState.gLastSendScd.co2 = co2;
             nlog::printf("SCD CO2: %d ppm\n", va_t((u32)co2));
-            npacket::sensor_value_t co2_sensor(npacket::sensor_block_t::ID_CO2, (u16)co2);
-            sensor_block.write(&gAppState.gSensorPacket, co2_sensor);
+            npacket::packet_write(gAppState.gSensorPacket, npacket::ID_CO2, state->MACAddress, (u16)co2);
         }
         if (gAppState.gLastSendScd.temperature != temperature)
         {
             gAppState.gLastSendScd.temperature = temperature;
             nlog::printf("SCD Temperature: %d °C\n", va_t((s32)temperature));
-            npacket::sensor_value_t temp_sensor(npacket::sensor_block_t::ID_TEMPERATURE, (u16)temperature);
-            sensor_block.write(&gAppState.gSensorPacket, temp_sensor);
+            npacket::packet_write(gAppState.gSensorPacket, npacket::ID_TEMPERATURE, state->MACAddress, (u16)temperature);
         }
         if (gAppState.gLastSendScd.humidity != humidity)
         {
             gAppState.gLastSendScd.humidity = humidity;
             nlog::printf("SCD Humidity: %d %%\n", va_t((u32)humidity));
-            npacket::sensor_value_t humidity_sensor(npacket::sensor_block_t::ID_HUMIDITY, (u16)humidity);
-            sensor_block.write(&gAppState.gSensorPacket, humidity_sensor);
+            npacket::packet_write(gAppState.gSensorPacket, npacket::ID_HUMIDITY, state->MACAddress, (u16)humidity);
         }
 
-        if (sensor_block.finalize(&gAppState.gSensorPacket) > 0)
+        if (gAppState.gSensorPacket.Size > 0)
         {
             nnode::send_sensor_data(state, gAppState.gSensorPacket.Data, gAppState.gSensorPacket.Size);
         }
@@ -311,10 +296,8 @@ namespace ncore
     {
 #ifdef ENABLE_RD03D
         // Write a custom (binary-format) network message
-        npacket::packet_set_mac(gAppState.gSensorPacket, state->MACAddress);
 
-        npacket::sensor_block_t sensor_block;
-        sensor_block.begin(&gAppState.gSensorPacket);
+        npacket::packet_init(gAppState.gSensorPacket);
 
         for (s8 i = 0; i < 3; ++i)
         {
@@ -322,12 +305,11 @@ namespace ncore
             if (gAppState.gCurrentRd03d.LastSendDetected[i] != detected)
             {
                 gAppState.gCurrentRd03d.LastSendDetected[i] = detected;
-                npacket::sensor_value_t presence_sensor(npacket::sensor_block_t::ID_PRESENCE1 + i, (u16)detected);
-                sensor_block.write(&gAppState.gSensorPacket, presence_sensor);
+                npacket::packet_write(gAppState.gSensorPacket, npacket::ID_PRESENCE1 + i, state->MACAddress, (u16)detected);
             }
         }
 
-        if (sensor_block.finalize(&gAppState.gSensorPacket) > 0)
+        if (gAppState.gSensorPacket.Size > 0)
         {
             nnode::send_sensor_data(state, gAppState.gSensorPacket.Data, gAppState.gSensorPacket.Size);
         }
