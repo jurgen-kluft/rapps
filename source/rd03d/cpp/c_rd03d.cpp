@@ -10,7 +10,7 @@
 #include "rcore/c_system.h"
 #include "rcore/c_task.h"
 
-#include "rsensors/c_rd03d.h"
+#include "lib_rd03d/c_rd03d.h"
 
 #define ENABLE_RD03D
 
@@ -35,8 +35,9 @@ namespace ncore
 
     struct state_app_t
     {
-        npacket::packet_t gSensorPacket;  // Sensor packet for sending data
-        rd03d_data_t            gCurrentRd03d;
+        npacket::packet_t          gSensorPacket;  // Sensor packet for sending data
+        nsensors::nrd03d::sensor_t gRd03dSensor;
+        rd03d_data_t               gCurrentRd03d;
     };
 
     state_app_t gAppState;
@@ -49,12 +50,12 @@ namespace ncore
         ntask::result_t process_rd03d(state_t* state)
         {
 #ifdef ENABLE_RD03D
-            if (nsensors::nrd03d::update())
+            if (nsensors::nrd03d::update(gAppState.gRd03dSensor))
             {
                 for (s8 i = 0; i < 3; ++i)
                 {
                     nsensors::nrd03d::target_t tgt;
-                    if (nsensors::nrd03d::getTarget(i, tgt))
+                    if (nsensors::nrd03d::getTarget(gAppState.gRd03dSensor, i, tgt))
                     {
                         gAppState.gCurrentRd03d.DetectionBits[i] = (gAppState.gCurrentRd03d.DetectionBits[i] << 1) | 1;
                     }
@@ -101,8 +102,7 @@ namespace ncore
 
                 // Write a custom (binary-format) network message
 
-                npacket::sensor_block_t sensors;
-                sensors.begin(&gAppState.gSensorPacket);
+                npacket::packet_init(gAppState.gSensorPacket);
 
                 for (s8 i = 0; i < 3; ++i)
                 {
@@ -117,17 +117,14 @@ namespace ncore
                     if (gAppState.gCurrentRd03d.LastSendDetected[i] != detected)
                     {
                         gAppState.gCurrentRd03d.LastSendDetected[i] = detected;
-                        npacket::sensor_value_t distanceSensor = {npacket::nsensorid::ID_DISTANCE1 + i, (u16)detected};
-                        sensors.write(&gAppState.gSensorPacket, distanceSensor);
+                        npacket::packet_write(gAppState.gSensorPacket, npacket::ID_DISTANCE1 + i, state->MACAddress, (u16)detected);
                     }
                 }
 
-                npacket::sensor_value_t rssiSensor = {npacket::nsensorid::ID_RSSI, (u16)(nwifi::get_RSSI(state) & 0xFFFF)};
-                sensors.write(&gAppState.gSensorPacket, rssiSensor);
+                npacket::packet_write(gAppState.gSensorPacket, npacket::ID_RSSI, state->MACAddress, (u16)(nwifi::get_RSSI(state) & 0xFFFF));
 
-                if (sensors.finalize(&gAppState.gSensorPacket) > 0)
+                if (gAppState.gSensorPacket.Size > 0)
                 {
-                    npacket::packet_set_mac(gAppState.gSensorPacket, state->MACAddress);
                     nnode::send_sensor_data(state, gAppState.gSensorPacket.Data, gAppState.gSensorPacket.Size);
                 }
             }
@@ -159,7 +156,7 @@ namespace ncore
         void presetup(state_t* state)
         {
             // Initialize RD03D sensor with rx and tx pin
-            nsensors::nrd03d::begin(20, 21);
+            nsensors::nrd03d::begin(gAppState.gRd03dSensor, 20, 21);
         }
 
         void setup(state_t* state)

@@ -1,5 +1,6 @@
 #include "cube/c_cube.h"
 
+#include "rcore/c_deepsleep.h"
 #include "rcore/c_gpio.h"
 #include "rwifi/c_node.h"
 #include "rwifi/c_wifi.h"
@@ -26,13 +27,7 @@ namespace ncore
 {
     namespace napp
     {
-        ntask::result_t process(state_t* state)
-        {
-            return ntask::RESULT_OK;
-        }
-
         ntask::periodic_t periodic_process(100);
-
         void main_program(ntask::scheduler_t* exec, state_t* state)
         {
             if (ntask::is_first_call(exec))
@@ -46,9 +41,15 @@ namespace ncore
 
         state_task_t gAppTask;
 
-        void presetup(state_t* state)
+        void wakeup(state_t* state, nwakeup::reason_t reason) 
         {
-            nsensors::initSC7A20H();            // Initialize sensor
+            nsensors::initSC7A20H();  // Initialize sensor
+
+            if (reason == nwakeup::REASON_EXT0)
+            {
+                // Figure out what caused the wakeup and handle it accordingly
+            }
+
         }
 
         void setup(state_t* state)

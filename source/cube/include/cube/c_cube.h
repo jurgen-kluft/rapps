@@ -1,5 +1,5 @@
-#ifndef __APP_MAGNET_CONTACT_H__
-#define __APP_MAGNET_CONTACT_H__
+#ifndef __APP_MAGIC_CUBE_H__
+#define __APP_MAGIC_CUBE_H__
 #include "rcore/c_target.h"
 #ifdef USE_PRAGMA_ONCE
     #pragma once
@@ -11,4 +11,4 @@ namespace ncore
 
 }  // namespace ncore
 
-#endif
+#endif // __APP_MAGIC_CUBE_H__
