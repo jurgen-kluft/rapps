@@ -4,7 +4,6 @@ import (
 	denv "github.com/jurgen-kluft/ccode/denv"
 	respnow "github.com/jurgen-kluft/respnow/package"
 	rsensors "github.com/jurgen-kluft/rsensors/package"
-	ru8g2 "github.com/jurgen-kluft/ru8g2/package"
 	rwifi "github.com/jurgen-kluft/rwifi/package"
 )
 
@@ -16,13 +15,11 @@ const (
 func GetPackage() *denv.Package {
 	wifipkg := rwifi.GetPackage()
 	sensorspkg := rsensors.GetPackage()
-	u8g2pkg := ru8g2.GetPackage()
 	espnowpkg := respnow.GetPackage()
 
 	mainpkg := denv.NewPackage(repo_path, repo_name)
 	mainpkg.AddPackage(wifipkg)
 	mainpkg.AddPackage(sensorspkg)
-	mainpkg.AddPackage(u8g2pkg)
 	mainpkg.AddPackage(espnowpkg)
 
 	// Setup the main applications
@@ -52,14 +49,9 @@ func GetPackage() *denv.Package {
 	hsp24.AddDependencies(wifipkg.GetMainLib())
 	hsp24.AddDependency(sensorspkg.GetLibrary("library_hsp24"))
 
-	sh1107 := denv.SetupCppAppProjectForArduinoEsp32(mainpkg, "sh1107", "sh1107")
-	sh1107.AddDependencies(wifipkg.GetMainLib())
-	sh1107.AddDependencies(u8g2pkg.GetMainLib())
-
 	mainpkg.AddMainApp(airquality)
 	mainpkg.AddMainApp(humanpresence)
 	mainpkg.AddMainApp(magnet)
-	mainpkg.AddMainApp(sh1107)
 	mainpkg.AddMainApp(mg58f18)
 	mainpkg.AddMainApp(rd03d)
 	mainpkg.AddMainApp(hsp24)
