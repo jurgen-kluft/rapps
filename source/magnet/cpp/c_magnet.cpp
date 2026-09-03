@@ -6,9 +6,12 @@
 #include "rcore/c_log.h"
 #include "rcore/c_state.h"
 #include "rcore/c_str.h"
-#include "rcore/c_packet.h"
+
+#include "rhome/c_home.h"
+#include "rhome/c_sensor.h"
 
 #include "rwifi/c_wifi.h"
+#include "rwifi/c_wifi_mgr.h"
 #include "rwifi/c_udp.h"
 
 #ifndef TARGET_ESP8266
@@ -19,15 +22,18 @@
 
 namespace ncore
 {
-    struct state_app_t
-    {
-    };
-    state_app_t gAppState;
-
-    npacket::packet_t   packet;            // Global packet instance to avoid re-allocating memory on each tick
     ngpio::input_pin_t  switch_pin(13);    // GPIO pin connected to switch
     ngpio::output_pin_t poweroff_pin(16);  // GPIO pin connected to end line
     ngpio::analog_pin_t battery_pin(A0);   // GPIO pin connected to battery measurement
+
+    struct state_app_t
+    {
+        nnet::wifi_config_t  wifi_config;
+        nnet::wifi_manager_t wifi_mgr;
+        nnet::msg_t          msg;  // Global packet instance to avoid re-allocating memory on each tick
+    };
+    state_app_t gAppState;
+
 }  // namespace ncore
 
 namespace ncore
@@ -52,16 +58,18 @@ namespace ncore
 
         void setup(state_t* state)
         {
-            nwifi::init_state(state, true);
-            nudp::init_state(state);
-            nwifi::connect(state);  // Connect to WiFi using credentials from state
+            nnet::init_state(state, true);
+            nnet::nudp::init_state(state);
+
+            nnet::init_wifi_config(gAppState.wifi_config, WIFI_SSID(), WIFI_PASSWORD());
+            nnet::setup(gAppState.wifi_mgr, &gAppState.wifi_config);
         }
 
         void tick(state_t* state)
         {
-            s8  switch_state_cur      = switch_pin.is_high() ? 1 : 0;  // Read switch state
-            s8  switch_state_prev     = 1 - switch_state_cur;          // Set previous state to opposite to ensure we enter the loop
-            u16 switch_debounce_count = 0;
+            i32 switch_state_cur      = switch_pin.is_high() ? 1 : 0;  // Read switch state
+            i32 switch_state_prev     = 1 - switch_state_cur;          // Set previous state to opposite to ensure we enter the loop
+            i32 switch_debounce_count = 0;
 
             // TODO, do we really need the below logic to debounce the switch?
 
@@ -78,45 +86,37 @@ namespace ncore
             }
 
             const s32 battery_level = (battery_pin.read() * 42) / 1023;  // Percentage (0-100 %)
-            const s32 RSSI          = nwifi::get_RSSI(state);            // WiFi signal strength
+            const s32 RSSI          = nnet::get_RSSI(state);             // WiFi signal strength
             const u64 boottime      = ntimer::millis() - gStartTimeMs;   // Time since boot until we send the data
             u8 const* mac           = state->MACAddress;                 // Get MAC address from state
 
-            npacket::sensor_block_t sensors;
-            sensors.begin(&packet);
+            nnet::msg_init(gAppState.msg, nnet::MSG_TYPE_SENSOR_DATA, mac);
             {
-                npacket::sensor_value_t switch_state_value{npacket::ID_SWITCH1, (u16)switch_state_cur};
-                npacket::sensor_value_t battery_level_value{npacket::ID_BATTERY, (u16)battery_level};
-                npacket::sensor_value_t rssi_value{npacket::ID_RSSI, (u16)RSSI};
-                npacket::sensor_value_t perf1_value{npacket::ID_PERF1, (u16)boottime};
-                npacket::sensor_value_t perf2_value{npacket::ID_PERF2, switch_debounce_count};
-
-                sensors.write(&packet, switch_state_value);   // Open/Close
-                sensors.write(&packet, battery_level_value);  // Battery level
-                sensors.write(&packet, rssi_value);           // WiFi signal strength
-                sensors.write(&packet, perf1_value);          // Performance metric 1 (boot time in ms, max 65 seconds)
-                sensors.write(&packet, perf2_value);          // Performance metric 1 (debounce count)
+                msg_write_sensor(gAppState.msg, SENSOR_ID_SWITCH1, switch_state_cur);     // Open/Close
+                msg_write_sensor(gAppState.msg, SENSOR_ID_BATTERY, battery_level);        // Battery level
+                msg_write_sensor(gAppState.msg, SENSOR_ID_RSSI, RSSI);                    // WiFi signal strength
+                msg_write_sensor(gAppState.msg, SENSOR_ID_PERF1, boottime);               // Performance metric 1 (boot time in ms, max 65 seconds)
+                msg_write_sensor(gAppState.msg, SENSOR_ID_PERF2, switch_debounce_count);  // Performance metric 1 (debounce count)
             }
-            sensors.finalize(&packet);
+            nnet::msg_final(gAppState.msg);
 
             u16 check_wifi_connect_count = 0;
-            while (!nwifi::connected(state) && check_wifi_connect_count < 5)
+            while (!nnet::connected(state) && check_wifi_connect_count < 5)
             {
                 ntimer::delay(20);
                 check_wifi_connect_count++;
             }
 
-            if (nwifi::connected(state))
+            if (nnet::is_connected(gAppState.wifi_mgr))
             {
-                packet->begin(state->MACAddress);  // Initialize packet with MAC address from state
-                const IPAddress_t server_ip   = IPAddress_t::from(SERVER_IP);
-                const u16         server_port = SERVER_UDPPORT;
-                nudp::open(state, server_port);  // Open UDP port for sending data
-                nudp::send_to(state, server_port, packet.Data, packet.Size, server_ip, server_port);
+                const IPAddress_t server_ip   = IPAddress_t::from(SENSOR_SERVER_IP());
+                const u16         server_port = SENSOR_SERVER_UDPPORT();
+                nnet::nudp::open(state, server_port);  // Open UDP port for sending data
+                nnet::nudp::send_to(state, server_port, gAppState.msg.Data, gAppState.msg.Size, server_ip, server_port);
             }
 
             poweroff_pin.set_low();
-            nlog::println("packet has been sent, turning OFF device!");
+            nlog::println("sensor message has been sent, turning OFF device!");
             ntimer::delay(5000);  // Delay for 5 seconds
         }
 

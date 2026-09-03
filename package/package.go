@@ -3,12 +3,13 @@ package rapps
 import (
 	denv "github.com/jurgen-kluft/go-ide/denv"
 	respnow "github.com/jurgen-kluft/respnow/package"
+	rhome "github.com/jurgen-kluft/rhome/package"
 	rsensors "github.com/jurgen-kluft/rsensors/package"
 	rwifi "github.com/jurgen-kluft/rwifi/package"
 )
 
 const (
-	repo_path = "github.com\\jurgen-kluft"
+	repo_path = "github.com/jurgen-kluft"
 	repo_name = "rapps"
 )
 
@@ -16,15 +17,18 @@ func GetPackage() *denv.Package {
 	wifipkg := rwifi.GetPackage()
 	sensorspkg := rsensors.GetPackage()
 	espnowpkg := respnow.GetPackage()
+	homepkg := rhome.GetPackage()
 
 	mainpkg := denv.NewPackage(repo_path, repo_name)
 	mainpkg.AddPackage(wifipkg)
 	mainpkg.AddPackage(sensorspkg)
 	mainpkg.AddPackage(espnowpkg)
+	mainpkg.AddPackage(homepkg)
 
 	// Setup the main applications
 	airquality := denv.SetupCppAppProject(mainpkg, "airquality", "airquality")
 	airquality.AddDependencies(wifipkg.GetMainLib())
+	airquality.AddDependencies(homepkg.GetMainLib())
 	airquality.AddDependency(sensorspkg.GetLibrary("library_bh1750"))
 	airquality.AddDependency(sensorspkg.GetLibrary("library_bme280"))
 	airquality.AddDependency(sensorspkg.GetLibrary("library_scd41"))
@@ -32,21 +36,26 @@ func GetPackage() *denv.Package {
 
 	magnet := denv.SetupCppAppProjectForArduinoEsp8266(mainpkg, "magnet", "magnet")
 	magnet.AddDependencies(wifipkg.GetMainLib())
+	magnet.AddDependencies(homepkg.GetMainLib())
 
 	humanpresence := denv.SetupCppAppProject(mainpkg, "humanpresence", "humanpresence")
 	humanpresence.AddDependencies(wifipkg.GetMainLib())
+	humanpresence.AddDependencies(homepkg.GetMainLib())
 	humanpresence.AddDependency(sensorspkg.GetLibrary("library_hmmd"))
 
 	mg58f18 := denv.SetupCppAppProjectForArduinoEsp32(mainpkg, "mg58f18", "mg58f18")
 	mg58f18.AddDependencies(wifipkg.GetMainLib())
+	mg58f18.AddDependencies(homepkg.GetMainLib())
 	mg58f18.AddDependency(sensorspkg.GetLibrary("library_mg58f18"))
 
 	rd03d := denv.SetupCppAppProject(mainpkg, "rd03d", "rd03d")
 	rd03d.AddDependencies(wifipkg.GetMainLib())
+	rd03d.AddDependencies(homepkg.GetMainLib())
 	rd03d.AddDependency(sensorspkg.GetLibrary("library_rd03d"))
 
 	hsp24 := denv.SetupCppAppProject(mainpkg, "hsp24", "hsp24")
 	hsp24.AddDependencies(wifipkg.GetMainLib())
+	hsp24.AddDependencies(homepkg.GetMainLib())
 	hsp24.AddDependency(sensorspkg.GetLibrary("library_hsp24"))
 
 	mainpkg.AddMainApp(airquality)
