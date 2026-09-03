@@ -1,14 +1,17 @@
 #include "rd03d/c_rd03d.h"
 
 #include "rcore/c_gpio.h"
-#include "rwifi/c_node.h"
-#include "rwifi/c_wifi.h"
 #include "rcore/c_timer.h"
 #include "rcore/c_log.h"
-#include "rcore/c_packet.h"
 #include "rcore/c_str.h"
 #include "rcore/c_system.h"
-#include "rcore/c_task.h"
+
+#include "rwifi/c_wifi.h"
+#include "rwifi/c_wifi_mgr.h"
+#include "rwifi/c_tcp_client.h"
+
+#include "rhome/c_home.h"
+#include "rhome/c_sensor.h"
 
 #include "lib_rd03d/c_rd03d.h"
 
@@ -19,8 +22,8 @@ namespace ncore
     struct rd03d_data_t
     {
         u64 DetectionBits[3];
-        u8  Detected[3];
-        u8  LastSendDetected[3];
+        i32 Detected[3];
+        i32 LastSendDetected[3];
 
         void reset()
         {
@@ -35,9 +38,15 @@ namespace ncore
 
     struct state_app_t
     {
-        npacket::packet_t          gSensorPacket;  // Sensor packet for sending data
+        nnet::msg_t                gSensorPacket;  // Sensor packet for sending data
         nsensors::nrd03d::sensor_t gRd03dSensor;
         rd03d_data_t               gCurrentRd03d;
+
+        nnet::wifi_manager_t gWifiManager;
+        nnet::wifi_config_t  gWifiConfig;
+
+        nnet::config_t gTcpConfig;
+        nnet::tcp_client_t gTcpClient;
     };
 
     state_app_t gAppState;
@@ -47,7 +56,7 @@ namespace ncore
 {
     namespace napp
     {
-        ntask::result_t process_rd03d(state_t* state)
+        void process_rd03d(void* user)
         {
 #ifdef ENABLE_RD03D
             if (nsensors::nrd03d::update(gAppState.gRd03dSensor))
@@ -102,7 +111,7 @@ namespace ncore
 
                 // Write a custom (binary-format) network message
 
-                npacket::packet_init(gAppState.gSensorPacket);
+                nnet::msg_init(gAppState.gSensorPacket, nnet::MSG_TYPE_SENSOR_DATA, nnet::get_mac_address(gAppState.gWifiManager));
 
                 for (s8 i = 0; i < 3; ++i)
                 {
@@ -117,55 +126,43 @@ namespace ncore
                     if (gAppState.gCurrentRd03d.LastSendDetected[i] != detected)
                     {
                         gAppState.gCurrentRd03d.LastSendDetected[i] = detected;
-                        npacket::packet_write(gAppState.gSensorPacket, npacket::ID_DISTANCE1 + i, state->MACAddress, (u16)detected);
+                        msg_write_sensor(gAppState.gSensorPacket, SENSOR_ID_DISTANCE1 + i, detected);
                     }
                 }
 
-                npacket::packet_write(gAppState.gSensorPacket, npacket::ID_RSSI, state->MACAddress, (u16)(nwifi::get_RSSI(state) & 0xFFFF));
-
-                if (gAppState.gSensorPacket.Size > 0)
-                {
-                    nnode::send_sensor_data(state, gAppState.gSensorPacket.Data, gAppState.gSensorPacket.Size);
-                }
-            }
-#endif
-            return ntask::RESULT_OK;
-        }
-
-        ntask::periodic_t periodic_process_rd03d(100);
-
-        void main_program(ntask::scheduler_t* exec, state_t* state)
-        {
-            if (ntask::is_first_call(exec))
-            {
-                ntask::init_periodic(exec, periodic_process_rd03d);
-            }
-
-            // Process sensor data
-#ifdef ENABLE_RD03D
-            if (ntask::periodic(exec, periodic_process_rd03d))
-            {
-                ntask::call(exec, process_rd03d);
+                msg_write_sensor(gAppState.gSensorPacket, SENSOR_ID_RSSI, nnet::get_rssi(gAppState.gWifiManager));
+                nnet::send(gAppState.gTcpClient, gAppState.gSensorPacket.Data, gAppState.gSensorPacket.Size);
             }
 #endif
         }
-        ntask::program_t gMainProgram(main_program);
 
-        state_task_t gAppTask;
+        ntimer::periodic_task_t periodic_process_rd03d;
 
         void presetup(state_t* state)
         {
             // Initialize RD03D sensor with rx and tx pin
             nsensors::nrd03d::begin(gAppState.gRd03dSensor, 20, 21);
+
+            ntimer::init_periodic_task(&periodic_process_rd03d, 100, process_rd03d, nullptr);
         }
 
         void setup(state_t* state)
         {
-            ntask::set_main(state, &gAppTask, &gMainProgram);
-            nnode::initialize(state, &gAppTask);
+            nnet::init_wifi_config(gAppState.gWifiConfig, WIFI_SSID(), WIFI_PASSWORD());
+            nnet::setup(gAppState.gWifiManager, &gAppState.gWifiConfig);
+
+            void* socket = nnet::setup_default(&gAppState.gTcpConfig);
+            nnet::setup(gAppState.gTcpClient, &gAppState.gTcpConfig, socket, SENSOR_SERVER_IP(), SENSOR_SERVER_TCPPORT());
         }
 
-        void tick(state_t* state) { ntask::tick(state, &gAppTask); }
+        void tick(state_t* state) 
+        { 
+            const u64 now_ms = ntimer::millis();
+
+            ntimer::tick_periodic_task(&periodic_process_rd03d, now_ms);
+
+            nnet::tick_tcp_client(&gAppState.gWifiManager, gAppState.gTcpClient);
+        }
 
     }  // namespace napp
 }  // namespace ncore
