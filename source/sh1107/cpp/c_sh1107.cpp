@@ -1,16 +1,13 @@
 #include "sh1107/c_sh1107.h"
 
-#include "rcore/c_malloc.h"
 #include "rcore/c_gpio.h"
 #include "rcore/c_timer.h"
 #include "rcore/c_log.h"
-#include "rcore/c_packet.h"
 #include "rcore/c_str.h"
 #include "rcore/c_system.h"
 #include "rcore/c_wire.h"
 
 #include "rwifi/c_tcp.h"
-#include "rwifi/c_node.h"
 
 #include "ru8g2/U8x8lib.h"
 #include "ru8g2/U8g2lib.h"
@@ -83,7 +80,7 @@ namespace ncore
 {
     namespace napp
     {
-        void presetup(state_t* state)
+        void presetup(state_t *state)
         {
             // Initialize I2C bus
             nwire::begin(DISPLAY_SDA, DISPLAY_SCL);
