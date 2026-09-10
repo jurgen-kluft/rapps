@@ -2,16 +2,17 @@
 
 #include "rcore/c_app.h"
 #include "rcore/c_gpio.h"
-#include "rwifi/c_node.h"
-#include "rwifi/c_wifi.h"
 #include "rcore/c_timer.h"
 #include "rcore/c_log.h"
-#include "rcore/c_packet.h"
 #include "rcore/c_str.h"
 #include "rcore/c_system.h"
-#include "rcore/c_task.h"
 
-#include "rsensors/c_hsp24.h"
+#include "rwifi/c_wifi.h"
+
+#include "rhome/c_home.h"
+#include "rhome/c_sensor.h"
+
+#include "lib_hsp24/c_hsp24.h"
 
 #define ENABLE_HSP24
 
@@ -33,7 +34,7 @@ namespace ncore
 
     struct state_app_t
     {
-        npacket::sensorpacket_t    gSensorPacket;  // Sensor packet for sending data
+        nnet::msg_t                gSensorPacket;  // Sensor packet for sending data
         hsp24_data_t               gCurrentHsp24;
         nsensors::nseeed::hsp24_t* gSensor;
     };
@@ -45,7 +46,7 @@ namespace ncore
 {
     namespace napp
     {
-        ntask::result_t read_presence(state_t* state)
+        void read_presence(state_t* state)
         {
 #ifdef ENABLE_HSP24
             nsensors::nseeed::RadarStatus status;
@@ -100,10 +101,9 @@ namespace ncore
                 }
             }
 #endif
-            return ntask::RESULT_OK;
         }
 
-        ntask::result_t send_presence(state_t* state)
+        void send_presence(state_t* state)
         {
 #ifdef ENABLE_HSP24
             u8 detected = gAppState.gCurrentHsp24.Detected;
@@ -119,47 +119,18 @@ namespace ncore
                 gAppState.gCurrentHsp24.LastSendDetected = detected;
 
                 // Write a custom (binary-format) network message
-                gAppState.gSensorPacket.begin(state->MACAddress);
-                gAppState.gSensorPacket.write(npacket::nsensorid::ID_PRESENCE1, detected & 3);
-                gAppState.gSensorPacket.write(npacket::nsensorid::ID_RSSI, nwifi::get_RSSI(state));
-                gAppState.gSensorPacket.finalize();
+                // gAppState.gSensorPacket.begin(state->MACAddress);
+                // gAppState.gSensorPacket.write(nnet::nsensorid::ID_PRESENCE1, detected & 3);
+                // gAppState.gSensorPacket.write(nnet::nsensorid::ID_RSSI, nwifi::get_RSSI(state));
+                // gAppState.gSensorPacket.finalize();
 
-                nnode::send_sensor_data(state, gAppState.gSensorPacket.Data, gAppState.gSensorPacket.Size);
-            }
-#endif
-            return ntask::RESULT_OK;
-        }
-
-        ntask::periodic_t periodic_read_presence(100);
-        ntask::periodic_t periodic_send_presence(50 + 3);
-
-        void main_program(ntask::scheduler_t* exec, state_t* state)
-        {
-            if (ntask::is_first_call(exec))
-            {
-                ntask::init_periodic(exec, periodic_read_presence);
-                ntask::init_periodic(exec, periodic_send_presence);
-            }
-
-            // Reading sensor data
-#ifdef ENABLE_HSP24
-            if (ntask::periodic(exec, periodic_read_presence))
-            {
-                ntask::call(exec, read_presence);
-            }
-#endif
-
-            // Sending sensor data
-#ifdef ENABLE_HSP24
-            if (ntask::periodic(exec, periodic_send_presence))
-            {
-                ntask::call(exec, send_presence);
+                // nnode::send_sensor_data(state, gAppState.gSensorPacket.Data, gAppState.gSensorPacket.Size);
             }
 #endif
         }
-        ntask::program_t gMainProgram(main_program);
 
-        state_task_t gAppTask;
+        ntimer::periodic_task_t periodic_read_presence; // (100);
+        ntimer::periodic_task_t periodic_send_presence; // (50 + 3);
 
         void presetup(state_t* state)
         {
@@ -170,11 +141,13 @@ namespace ncore
 
         void setup(state_t* state)
         {
-            ntask::set_main(state, &gAppTask, &gMainProgram);
-            nnode::initialize(state, &gAppTask);
+            // ...
         }
 
-        void tick(state_t* state) { ntask::tick(state, &gAppTask); }
+        void tick(state_t* state) 
+        { 
+            // ...
+        }
 
     }  // namespace napp
 }  // namespace ncore
