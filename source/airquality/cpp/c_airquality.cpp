@@ -82,8 +82,7 @@ namespace ncore
         nnet::config_t     gTcpConfig;
         nnet::tcp_client_t gTcpClient;
 
-        nnet::wifi_config_t  gWifiConfig;
-        nnet::wifi_manager_t gWifiManager;
+        nnet::wifi_manager_t* gWifiManager;
 
         nnet::msg_t gSensorPacket;  // Sensor packet for sending data
 
@@ -382,16 +381,18 @@ namespace ncore
             ntimer::init_periodic_task(&gAppState.gRd03dSampleTask, 10, nullptr, read_rd03d);  // Sample RD03D every 10 ms
             ntimer::init_periodic_task(&gAppState.gRd03dSendTask, 250, nullptr, send_rd03d);  // Send RD03D data every 250
 #endif
-            nnet::init_wifi_config(gAppState.gWifiConfig, WIFI_SSID(), WIFI_PASSWORD());
-            nnet::setup(gAppState.gWifiManager, &gAppState.gWifiConfig);
+            gAppState.gWifiManager = nnet::create_wifi_mgr(WIFI_SSID(), WIFI_PASSWORD());
+            nnet::activate(gAppState.gWifiManager);
 
             void* socket = nnet::setup_default(&gAppState.gTcpConfig);
-            nnet::setup(gAppState.gTcpClient, &gAppState.gTcpConfig, socket, SENSOR_SERVER_IP(), SENSOR_SERVER_TCPPORT());
+            nnet::setup(gAppState.gTcpClient, &gAppState.gTcpConfig, socket);
+            nnet::connect(gAppState.gTcpClient, SENSOR_SERVER_IP(), SENSOR_SERVER_TCPPORT());
         }
 
         void tick(state_t* state)
         {
-            nnet::tick_tcp_client(&gAppState.gWifiManager, gAppState.gTcpClient);
+            nnet::tick(gAppState.gWifiManager);
+            nnet::tick_tcp_client(nnet::get_link_state(gAppState.gWifiManager), gAppState.gTcpClient);
 
             const u64 now_ms = ncore::ntimer::millis();
 

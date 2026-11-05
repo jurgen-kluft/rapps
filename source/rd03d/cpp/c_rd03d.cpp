@@ -6,7 +6,6 @@
 #include "rcore/c_str.h"
 #include "rcore/c_system.h"
 
-#include "rwifi/c_wifi.h"
 #include "rwifi/c_wifi_mgr.h"
 #include "rwifi/c_tcp_client.h"
 
@@ -42,8 +41,7 @@ namespace ncore
         nsensors::nrd03d::sensor_t gRd03dSensor;
         rd03d_data_t               gCurrentRd03d;
 
-        nnet::wifi_manager_t gWifiManager;
-        nnet::wifi_config_t  gWifiConfig;
+        nnet::wifi_manager_t* gWifiManager;
 
         nnet::config_t gTcpConfig;
         nnet::tcp_client_t gTcpClient;
@@ -148,11 +146,12 @@ namespace ncore
 
         void setup(state_t* state)
         {
-            nnet::init_wifi_config(gAppState.gWifiConfig, WIFI_SSID(), WIFI_PASSWORD());
-            nnet::setup(gAppState.gWifiManager, &gAppState.gWifiConfig);
+            gAppState.gWifiManager = nnet::create_wifi_mgr(WIFI_SSID(), WIFI_PASSWORD());
+            nnet::activate(gAppState.gWifiManager);
 
             void* socket = nnet::setup_default(&gAppState.gTcpConfig);
-            nnet::setup(gAppState.gTcpClient, &gAppState.gTcpConfig, socket, SENSOR_SERVER_IP(), SENSOR_SERVER_TCPPORT());
+            nnet::setup(gAppState.gTcpClient, &gAppState.gTcpConfig, socket);
+            nnet::connect(gAppState.gTcpClient, SENSOR_SERVER_IP(), SENSOR_SERVER_TCPPORT());
         }
 
         void tick(state_t* state) 
@@ -161,7 +160,8 @@ namespace ncore
 
             ntimer::tick_periodic_task(&periodic_process_rd03d, now_ms);
 
-            nnet::tick_tcp_client(&gAppState.gWifiManager, gAppState.gTcpClient);
+            nnet::tick(gAppState.gWifiManager);
+            nnet::tick_tcp_client(nnet::get_link_state(gAppState.gWifiManager), gAppState.gTcpClient);
         }
 
     }  // namespace napp

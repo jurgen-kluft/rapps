@@ -7,8 +7,6 @@
 #include "rcore/c_str.h"
 #include "rcore/c_system.h"
 
-#include "rwifi/c_wifi.h"
-
 #include "rhome/c_home.h"
 #include "rhome/c_sensor.h"
 

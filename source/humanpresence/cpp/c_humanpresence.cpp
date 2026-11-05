@@ -6,7 +6,6 @@
 #include "rcore/c_str.h"
 #include "rcore/c_system.h"
 
-#include "rwifi/c_wifi.h"
 #include "rwifi/c_wifi_mgr.h"
 #include "rwifi/c_tcp_client.h"
 
@@ -29,8 +28,7 @@ namespace ncore
         s8          gLastPresence0      = 64;
         s8          gLastPresence1      = 0;
 
-        nnet::wifi_config_t  gWifiConfig;   // WiFi configuration for connecting to the network
-        nnet::wifi_manager_t gWifiManager;  // WiFi manager for handling WiFi connections
+        nnet::wifi_manager_t* gWifiManager;  // WiFi manager for handling WiFi connections
 
         nnet::config_t     gTcpClientConfig;  // TCP client configuration for connecting to the server
         nnet::tcp_client_t gTcpClient;        // TCP client for sending data to the server
@@ -96,7 +94,7 @@ namespace ncore
                         gAppState.gLastDistanceInCm = distanceInCm;
                         // nnet::sensor_value_t distanceSensor = {nnet::nsensorid::ID_DISTANCE1, distanceInCm};
                         // sensors.write(&gAppState.gSensorPacket, distanceSensor);
-                        msg_write_sensor(gAppState.gSensorPacket, SENSOR_ID_DISTANCE1, distanceInCm);
+                        msg_write_sensor(gAppState.gSensorPacket, SENSOR_ID_DISTANCE, distanceInCm);
                     }
 
                     {
@@ -132,12 +130,12 @@ namespace ncore
 
             ntimer::init_periodic_task(&gSensorReadTask, 100, func_read, nullptr);  // Set up a periodic task to read the sensor every 100 ms
 
-            nnet::init_wifi_config(gAppState.gWifiConfig, WIFI_SSID(), WIFI_PASSWORD());
+            gAppState.gWifiManager = nnet::create_wifi_mgr(WIFI_SSID(), WIFI_PASSWORD());
             nnet::activate(gAppState.gWifiManager);
 
             void* socket = nnet::setup_default(&gAppState.gTcpClientConfig);
-            nnet::setup(gAppState.gTcpClient, &gAppState.gTcpClientConfig, socket, SENSOR_SERVER_IP(), SENSOR_SERVER_TCPPORT());
-            nnet::connect(gAppState.gTcpClient);
+            nnet::setup(gAppState.gTcpClient, &gAppState.gTcpClientConfig, socket);
+            nnet::connect(gAppState.gTcpClient, SENSOR_SERVER_IP(), SENSOR_SERVER_TCPPORT());
 
             nlog::println("Setup done...");
         }
@@ -146,7 +144,8 @@ namespace ncore
         {
             const u64 now_ms = ntimer::millis();
 
-            nnet::tick_tcp_client(&gAppState.gWifiManager, gAppState.gTcpClient);
+            nnet::tick(gAppState.gWifiManager);
+            nnet::tick_tcp_client(nnet::get_link_state(gAppState.gWifiManager), gAppState.gTcpClient);
             ntimer::tick_periodic_task(&gSensorReadTask, now_ms);
         }
 

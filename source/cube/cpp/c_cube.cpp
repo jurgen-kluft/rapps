@@ -1,13 +1,12 @@
 #include "cube/c_cube.h"
 
+#include "rcore/c_app.h"
 #include "rcore/c_deepsleep.h"
 #include "rcore/c_gpio.h"
 #include "rcore/c_timer.h"
 #include "rcore/c_log.h"
 #include "rcore/c_str.h"
 #include "rcore/c_system.h"
-
-#include "rwifi/c_wifi.h"
 
 #include "lib_sc7a20h/c_sc7a20h.h"
 

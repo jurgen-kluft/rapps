@@ -1,123 +1,117 @@
 #include "magnet/c_magnet.h"
 
+#include "rcore/c_app.h"
 #include "rcore/c_state.h"
 #include "rcore/c_gpio.h"
 #include "rcore/c_timer.h"
 #include "rcore/c_log.h"
-#include "rcore/c_state.h"
 #include "rcore/c_str.h"
 
 #include "rhome/c_home.h"
 #include "rhome/c_sensor.h"
 
-#include "rwifi/c_wifi.h"
 #include "rwifi/c_wifi_mgr.h"
-#include "rwifi/c_udp.h"
+#include "rwifi/c_udp_client.h"
 
 #ifndef TARGET_ESP8266
-    #define A0 17
+#    define A0 17
 #else
-    #include "Arduino.h"
+#    include "Arduino.h"
 #endif
 
 namespace ncore
 {
-    ngpio::input_pin_t  switch_pin(13);    // GPIO pin connected to switch
-    ngpio::output_pin_t poweroff_pin(16);  // GPIO pin connected to end line
-    ngpio::analog_pin_t battery_pin(A0);   // GPIO pin connected to battery measurement
+    ngpio::input_pin_t  switch_pin(13);
+    ngpio::output_pin_t poweroff_pin(16);
+    ngpio::analog_pin_t battery_pin(A0);
 
     struct state_app_t
     {
-        nnet::wifi_config_t  wifi_config;
-        nnet::wifi_manager_t wifi_mgr;
-        nnet::msg_t          msg;  // Global packet instance to avoid re-allocating memory on each tick
+        nnet::wifi_manager_t* wifi_mgr;
+        nnet::udp_config_t    udp_config;
+        nnet::udp_client_t    udp_client;
+        nnet::msg_t           msg;
+        u64                   connect_deadline_ms;
+        bool                  completed;
     };
     state_app_t gAppState;
 
-}  // namespace ncore
-
-namespace ncore
-{
     namespace napp
     {
         u64 gStartTimeMs;
 
-        // This is where you would set up GPIO pins and other hardware before setup() is called
-        void presetup(state_t* state)
+        void wakeup(state_t* state, nwakeup::reason_t reason)
         {
-            // Initialize poweroff pin and set HIGH
             poweroff_pin.setup();
             poweroff_pin.set_high();
-            // Initialize switch pin
             switch_pin.setup();
-            // Note: Battery measurement pin is A0, and this is the only analog pin, so no need to set it up
-
-            // Record start time
             gStartTimeMs = ntimer::millis();
         }
 
         void setup(state_t* state)
         {
-            nnet::init_state(state, true);
-            nnet::nudp::init_state(state);
+            gAppState.wifi_mgr = nnet::create_wifi_mgr(WIFI_SSID(), WIFI_PASSWORD());
+            nnet::activate(gAppState.wifi_mgr);
 
-            nnet::init_wifi_config(gAppState.wifi_config, WIFI_SSID(), WIFI_PASSWORD());
-            nnet::setup(gAppState.wifi_mgr, &gAppState.wifi_config);
+            void* udp_socket = nnet::setup_default(&gAppState.udp_config);
+            nnet::setup(gAppState.udp_client, &gAppState.udp_config, udp_socket);
+            nnet::bind(gAppState.udp_client, SENSOR_SERVER_UDPPORT());
+
+            gAppState.connect_deadline_ms = ntimer::millis() + 10000;
+            gAppState.completed           = false;
         }
 
         void tick(state_t* state)
         {
-            i32 switch_state_cur      = switch_pin.is_high() ? 1 : 0;  // Read switch state
-            i32 switch_state_prev     = 1 - switch_state_cur;          // Set previous state to opposite to ensure we enter the loop
-            i32 switch_debounce_count = 0;
+            if (gAppState.completed)
+                return;
 
-            // TODO, do we really need the below logic to debounce the switch?
+            nnet::tick(gAppState.wifi_mgr);
+            nnet::tick_udp_client(nnet::get_link_state(gAppState.wifi_mgr), gAppState.udp_client);
 
-            // Read the switch state again before powering off, and if it is
-            // still the same continue the power off sequence. Otherwise, handle
-            // the switch state change by sending another ESPNOW packet.
-            while (switch_state_cur != switch_state_prev && switch_debounce_count <= 3)
+            const u64 now_ms = ntimer::millis();
+            if (nnet::is_connected(gAppState.wifi_mgr) && nnet::is_bound(gAppState.udp_client))
             {
-                // delay for 20 ms to debounce the switch
-                ntimer::delay(20);
-                switch_state_prev = switch_state_cur;
-                switch_state_cur  = switch_pin.is_high() ? 1 : 0;  // Read switch state again
-                switch_debounce_count++;
+                i32 switch_state_cur      = switch_pin.is_high() ? 1 : 0;
+                i32 switch_state_prev     = 1 - switch_state_cur;
+                i32 switch_debounce_count = 0;
+                while (switch_state_cur != switch_state_prev && switch_debounce_count <= 3)
+                {
+                    ntimer::delay(20);
+                    switch_state_prev = switch_state_cur;
+                    switch_state_cur  = switch_pin.is_high() ? 1 : 0;
+                    switch_debounce_count++;
+                }
+
+                const s32 battery_level = (battery_pin.read() * 42) / 1023;
+                const s32 rssi          = nnet::get_rssi(gAppState.wifi_mgr);
+                const u64 boottime      = now_ms - gStartTimeMs;
+                u8 const* mac           = nnet::get_mac_address(gAppState.wifi_mgr);
+
+                nnet::msg_init(gAppState.msg, nnet::MSG_TYPE_SENSOR_DATA, mac);
+                msg_write_sensor(gAppState.msg, SENSOR_ID_BINARY, switch_state_cur);
+                msg_write_sensor(gAppState.msg, SENSOR_ID_BATTERY, battery_level);
+                msg_write_sensor(gAppState.msg, SENSOR_ID_RSSI, rssi);
+                msg_write_sensor(gAppState.msg, SENSOR_ID_DURATION, boottime);
+                msg_write_sensor(gAppState.msg, SENSOR_ID_FREQUENCY, switch_debounce_count);
+                nnet::msg_final(gAppState.msg);
+
+                const nnet::udp_endpoint_t endpoint = {SENSOR_SERVER_IP(), SENSOR_SERVER_UDPPORT()};
+                if (nnet::send_to(gAppState.udp_client, endpoint, gAppState.msg.Data, gAppState.msg.Size))
+                {
+                    gAppState.completed = true;
+                    poweroff_pin.set_low();
+                    nlog::println("sensor message has been sent, turning OFF device!");
+                    return;
+                }
             }
 
-            const s32 battery_level = (battery_pin.read() * 42) / 1023;  // Percentage (0-100 %)
-            const s32 RSSI          = nnet::get_RSSI(state);             // WiFi signal strength
-            const u64 boottime      = ntimer::millis() - gStartTimeMs;   // Time since boot until we send the data
-            u8 const* mac           = state->MACAddress;                 // Get MAC address from state
-
-            nnet::msg_init(gAppState.msg, nnet::MSG_TYPE_SENSOR_DATA, mac);
+            if (now_ms >= gAppState.connect_deadline_ms)
             {
-                msg_write_sensor(gAppState.msg, SENSOR_ID_SWITCH1, switch_state_cur);     // Open/Close
-                msg_write_sensor(gAppState.msg, SENSOR_ID_BATTERY, battery_level);        // Battery level
-                msg_write_sensor(gAppState.msg, SENSOR_ID_RSSI, RSSI);                    // WiFi signal strength
-                msg_write_sensor(gAppState.msg, SENSOR_ID_PERF1, boottime);               // Performance metric 1 (boot time in ms, max 65 seconds)
-                msg_write_sensor(gAppState.msg, SENSOR_ID_PERF2, switch_debounce_count);  // Performance metric 1 (debounce count)
+                gAppState.completed = true;
+                poweroff_pin.set_low();
+                nlog::println("sensor message was not sent before the connection deadline, turning OFF device!");
             }
-            nnet::msg_final(gAppState.msg);
-
-            u16 check_wifi_connect_count = 0;
-            while (!nnet::connected(state) && check_wifi_connect_count < 5)
-            {
-                ntimer::delay(20);
-                check_wifi_connect_count++;
-            }
-
-            if (nnet::is_connected(gAppState.wifi_mgr))
-            {
-                const IPAddress_t server_ip   = IPAddress_t::from(SENSOR_SERVER_IP());
-                const u16         server_port = SENSOR_SERVER_UDPPORT();
-                nnet::nudp::open(state, server_port);  // Open UDP port for sending data
-                nnet::nudp::send_to(state, server_port, gAppState.msg.Data, gAppState.msg.Size, server_ip, server_port);
-            }
-
-            poweroff_pin.set_low();
-            nlog::println("sensor message has been sent, turning OFF device!");
-            ntimer::delay(5000);  // Delay for 5 seconds
         }
 
     }  // namespace napp
