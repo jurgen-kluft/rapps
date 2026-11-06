@@ -1,5 +1,6 @@
 #include "rd03d/c_rd03d.h"
 
+#include "rcore/c_app.h"
 #include "rcore/c_gpio.h"
 #include "rcore/c_timer.h"
 #include "rcore/c_log.h"
@@ -18,76 +19,64 @@
 
 namespace ncore
 {
-    struct rd03d_data_t
+    namespace napp
     {
-        u64 DetectionBits[3];
-        i32 Detected[3];
-        i32 LastSendDetected[3];
-
-        void reset()
+        struct rd03d_data_t
         {
-            for (s8 i = 0; i < 3; ++i)
-            {
-                DetectionBits[i]    = 0;
-                Detected[i]         = 4;  // Unknown state
-                LastSendDetected[i] = 8;
-            }
-        }
-    };
+            u64 DetectionBits[3];
+            i32 Detected[3];
 
-    struct state_app_t
-    {
+            void reset()
+            {
+                for (s8 i = 0; i < 3; ++i)
+                {
+                    DetectionBits[i] = 0;
+                    Detected[i]      = 4;  // Unknown state
+                }
+            }
+        };
+
         nnet::msg_t                gSensorPacket;  // Sensor packet for sending data
         nsensors::nrd03d::sensor_t gRd03dSensor;
         rd03d_data_t               gCurrentRd03d;
+        u8                         gLastPresence;
+        nnet::wifi_manager_t*      gWifiManager;
+        nnet::config_t             gTcpConfig;
+        nnet::tcp_client_t         gTcpClient;
+        ntimer::periodic_task_t    gPeriodicProcessRd03d;
 
-        nnet::wifi_manager_t* gWifiManager;
-
-        nnet::config_t gTcpConfig;
-        nnet::tcp_client_t gTcpClient;
-    };
-
-    state_app_t gAppState;
-}  // namespace ncore
-
-namespace ncore
-{
-    namespace napp
-    {
         void process_rd03d(void* user)
         {
 #ifdef ENABLE_RD03D
-            if (nsensors::nrd03d::update(gAppState.gRd03dSensor))
+            if (nsensors::nrd03d::update(gRd03dSensor))
             {
                 for (s8 i = 0; i < 3; ++i)
                 {
                     nsensors::nrd03d::target_t tgt;
-                    if (nsensors::nrd03d::getTarget(gAppState.gRd03dSensor, i, tgt))
+                    if (nsensors::nrd03d::getTarget(gRd03dSensor, i, tgt))
                     {
-                        gAppState.gCurrentRd03d.DetectionBits[i] = (gAppState.gCurrentRd03d.DetectionBits[i] << 1) | 1;
+                        gCurrentRd03d.DetectionBits[i] = (gCurrentRd03d.DetectionBits[i] << 1) | 1;
                     }
                     else
                     {
-                        gAppState.gCurrentRd03d.DetectionBits[i] = (gAppState.gCurrentRd03d.DetectionBits[i] << 1) | 0;
+                        gCurrentRd03d.DetectionBits[i] = (gCurrentRd03d.DetectionBits[i] << 1) | 0;
                     }
 
-                    u8         detected = gAppState.gCurrentRd03d.Detected[i];
-                    const bool dseen    = (gAppState.gCurrentRd03d.DetectionBits[i] != 0);
+                    u8         detected = gCurrentRd03d.Detected[i];
+                    const bool dseen    = (gCurrentRd03d.DetectionBits[i] != 0);
                     if (dseen)
                     {
-                        // Too transition from no-presence to presence we must have seen 3 detections in a row (300 ms)
                         detected = ((detected << 1) | 1);
                     }
                     else
                     {
-                        const bool dnone = gAppState.gCurrentRd03d.DetectionBits[i] == 0;
+                        const bool dnone = gCurrentRd03d.DetectionBits[i] == 0;
                         if (dnone)
                         {
-                            // To transition from presence to no-presence we must have seen 32 no-detections in a row (~3 seconds)
                             detected = ((detected << 1) | 0);
                         }
                     }
-                    gAppState.gCurrentRd03d.Detected[i] = detected;
+                    gCurrentRd03d.Detected[i] = detected;
 
                     if (detected == 0x80)
                     {
@@ -109,59 +98,63 @@ namespace ncore
 
                 // Write a custom (binary-format) network message
 
-                nnet::msg_init(gAppState.gSensorPacket, nnet::MSG_TYPE_SENSOR_DATA, nnet::get_mac_address(gAppState.gWifiManager));
-
+                u8 presence = 0;
                 for (s8 i = 0; i < 3; ++i)
                 {
-                    u8 detected = gAppState.gCurrentRd03d.Detected[i];
+                    u8 detected = gCurrentRd03d.Detected[i];
                     if (detected == 0x80)
-                        detected = 2;
+                        detected = 0;  // down flank
                     else if (detected == 0x01)
-                        detected = 1;
+                        detected = 1;  // up flank
                     else if (detected != 0x00)
-                        detected = 3;
+                        detected = 1;  // presence
 
-                    if (gAppState.gCurrentRd03d.LastSendDetected[i] != detected)
-                    {
-                        gAppState.gCurrentRd03d.LastSendDetected[i] = detected;
-                        msg_write_sensor(gAppState.gSensorPacket, SENSOR_ID_DISTANCE1 + i, detected);
-                    }
+                    presence |= (detected << i);
                 }
 
-                msg_write_sensor(gAppState.gSensorPacket, SENSOR_ID_RSSI, nnet::get_rssi(gAppState.gWifiManager));
-                nnet::send(gAppState.gTcpClient, gAppState.gSensorPacket.Data, gAppState.gSensorPacket.Size);
+                if (nnet::is_connected(gWifiManager))
+                {
+                    if (presence != gLastPresence)
+                    {
+                        nnet::msg_init(gSensorPacket, nnet::MSG_TYPE_SENSOR_DATA, nnet::get_mac_address(gWifiManager));
+                        msg_write_sensor(gSensorPacket, SENSOR_ID_BINARY, presence);
+                        msg_write_sensor(gSensorPacket, SENSOR_ID_RSSI, nnet::get_rssi(gWifiManager));
+                        if (nnet::send(gTcpClient, gSensorPacket.Data, gSensorPacket.Size))
+                        {
+                            gLastPresence = presence;
+                        }
+                    }
+                }
             }
 #endif
         }
 
-        ntimer::periodic_task_t periodic_process_rd03d;
-
-        void presetup(state_t* state)
+        void wakeup(state_t* state, nwakeup::reason_t reason)
         {
             // Initialize RD03D sensor with rx and tx pin
-            nsensors::nrd03d::begin(gAppState.gRd03dSensor, 20, 21);
+            nsensors::nrd03d::begin(gRd03dSensor, 20, 21);
 
-            ntimer::init_periodic_task(&periodic_process_rd03d, 100, process_rd03d, nullptr);
+            ntimer::init_periodic_task(&gPeriodicProcessRd03d, 100, process_rd03d, nullptr);
         }
 
         void setup(state_t* state)
         {
-            gAppState.gWifiManager = nnet::create_wifi_mgr(WIFI_SSID(), WIFI_PASSWORD());
-            nnet::activate(gAppState.gWifiManager);
+            gWifiManager = nnet::create_wifi_mgr(WIFI_SSID(), WIFI_PASSWORD());
+            nnet::activate(gWifiManager);
 
-            void* socket = nnet::setup_default(&gAppState.gTcpConfig);
-            nnet::setup(gAppState.gTcpClient, &gAppState.gTcpConfig, socket);
-            nnet::connect(gAppState.gTcpClient, SENSOR_SERVER_IP(), SENSOR_SERVER_TCPPORT());
+            void* socket = nnet::setup_default(&gTcpConfig);
+            nnet::setup(gTcpClient, &gTcpConfig, socket);
+            nnet::connect(gTcpClient, SENSOR_SERVER_IP(), SENSOR_SERVER_TCPPORT());
         }
 
-        void tick(state_t* state) 
-        { 
+        void tick(state_t* state)
+        {
             const u64 now_ms = ntimer::millis();
 
-            ntimer::tick_periodic_task(&periodic_process_rd03d, now_ms);
+            ntimer::tick_periodic_task(&gPeriodicProcessRd03d, now_ms);
 
-            nnet::tick(gAppState.gWifiManager);
-            nnet::tick_tcp_client(nnet::get_link_state(gAppState.gWifiManager), gAppState.gTcpClient);
+            nnet::tick(gWifiManager);
+            nnet::tick_tcp_client(nnet::get_link_state(gWifiManager), gTcpClient);
         }
 
     }  // namespace napp

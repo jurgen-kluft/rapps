@@ -4,7 +4,7 @@
 - Human Presence Detection (Functional)
 - Bed Occupancy Detection
 
-Uses the following `rdno` libraries:
+Uses the following `Arduino` libraries:
 
 - rcore
 - rnetwork
@@ -13,7 +13,7 @@ Uses the following `rdno` libraries:
 
 ## Overview
 
-- AirQuality (CO2, Temperature, Humidity, Pressure)
+- AirQuality (CO2, Temperature, Humidity, Pressure, Presence)
   - Status: Working
 - BedPresence
   - Status: Not working
